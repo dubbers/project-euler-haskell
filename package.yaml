@@ -2,9 +2,9 @@ name:                project-euler
 version:             0.1.0.0
 github:              "dubbers/project-euler-haskell"
 license:             BSD3
-author:              "dubbers"
-maintainer:          "benson.adam.r@gmail.com"
-copyright:           "2025 dubbers"
+author:              "Andrew Benson"
+maintainer:          "example@example.com"
+copyright:           "2025 Andrew Benson"
 
 extra-source-files:
 - README.md

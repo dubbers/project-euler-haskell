@@ -3,26 +3,20 @@ module Utils.Sudoku
     , Sudoku(..)
     , readSudokuFile
     , solveSudoku
+    , getTopLeftNumber
     ) where
 
-import Data.Array
 import Data.Char (digitToInt)
-import Data.List (find)
-import Data.Maybe (isJust, fromJust)
-import Control.Monad (guard)
+import qualified Data.Vector.Unboxed as V
 
-type Grid = Array (Int, Int) Int
+type Grid = V.Vector Int
 
 data Sudoku = Sudoku { grid :: Grid }
+    deriving (Show)
 
--- | Create an empty 9x9 grid
-emptyGrid :: Grid
-emptyGrid = array ((0,0), (8,8)) [((i,j), 0) | i <- [0..8], j <- [0..8]]
-
--- | Read a Sudoku puzzle from a string
+-- | Read a Sudoku puzzle from a string (9 lines of 9 characters)
 readSudoku :: String -> Sudoku
-readSudoku str = Sudoku $ array ((0,0), (8,8))
-    [((i,j), digitToInt (lines str !! i !! j)) | i <- [0..8], j <- [0..8]]
+readSudoku str = Sudoku $ V.fromList [digitToInt (lines str !! i !! j) | i <- [0..8], j <- [0..8]]
 
 -- | Read multiple Sudoku puzzles from a file
 readSudokuFile :: FilePath -> IO [Sudoku]
@@ -33,35 +27,40 @@ readSudokuFile path = do
     parsePuzzles [] = []
     parsePuzzles (_:xs) = readSudoku (unlines $ take 9 xs) : parsePuzzles (drop 9 xs)
 
--- | Check if a number is valid in a given position
-isValid :: Grid -> (Int, Int) -> Int -> Bool
-isValid g (row, col) num = and
-    [ notInRow
-    , notInCol
-    , notInBox
-    ]
+-- | Check if a value is valid at a position
+isValid :: Grid -> Int -> Int -> Bool
+isValid g pos val = and [checkRow, checkCol, checkBox]
   where
-    notInRow = num `notElem` [g ! (row,j) | j <- [0..8]]
-    notInCol = num `notElem` [g ! (i,col) | i <- [0..8]]
-    notInBox = num `notElem` 
-        [g ! (i,j) | i <- [r0..r0+2], j <- [c0..c0+2]]
-    r0 = 3 * (row `div` 3)
-    c0 = 3 * (col `div` 3)
+    row = pos `div` 9
+    col = pos `mod` 9
+    box_row = 3 * (row `div` 3)
+    box_col = 3 * (col `div` 3)
+    
+    checkRow = val `notElem` [g V.! (row * 9 + j) | j <- [0..8]]
+    checkCol = val `notElem` [g V.! (i * 9 + col) | i <- [0..8]]
+    checkBox = val `notElem` [g V.! (i * 9 + j) | 
+                             i <- [box_row..box_row+2],
+                             j <- [box_col..box_col+2]]
 
--- | Find an empty cell in the grid
-findEmpty :: Grid -> Maybe (Int, Int)
-findEmpty g = find (\pos -> g ! pos == 0) [(i,j) | i <- [0..8], j <- [0..8]]
+-- | Find first empty position with fewest valid values
+findBestEmpty :: Grid -> Maybe Int
+findBestEmpty g = if null empties then Nothing else Just (minimum empties)
+  where
+    empties = [i | i <- [0..80], g V.! i == 0]
 
 -- | Solve a Sudoku puzzle
 solveSudoku :: Sudoku -> Maybe Sudoku
-solveSudoku (Sudoku g) = case findEmpty g of
-    Nothing -> Just $ Sudoku g  -- Puzzle is solved
-    Just pos -> do
-        num <- find (isValid g pos) [1..9]
-        let g' = g // [(pos, num)]
-        solveSudoku (Sudoku g')
+solveSudoku (Sudoku g) = case findBestEmpty g of
+    Nothing -> Just $ Sudoku g
+    Just pos -> tryValues [1..9]
+      where
+        tryValues [] = Nothing
+        tryValues (v:vs)
+            | isValid g pos v = case solveSudoku (Sudoku $ g V.// [(pos, v)]) of
+                                 Just s -> Just s
+                                 Nothing -> tryValues vs
+            | otherwise = tryValues vs
 
 -- | Get the top-left 3-digit number from a solved Sudoku
 getTopLeftNumber :: Sudoku -> Int
-getTopLeftNumber (Sudoku g) = 
-    100 * (g ! (0,0)) + 10 * (g ! (0,1)) + (g ! (0,2))
+getTopLeftNumber (Sudoku g) = 100 * (g V.! 0) + 10 * (g V.! 1) + (g V.! 2)
